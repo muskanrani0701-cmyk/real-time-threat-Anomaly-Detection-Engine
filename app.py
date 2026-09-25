@@ -2,6 +2,7 @@ import os
 import time
 import logging
 from flask import Flask, request, jsonify
+import flask
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from pydantic import ValidationError
@@ -10,6 +11,8 @@ import config
 import db
 from broker import broker
 from schemas import NetworkLogPayload
+import cv2 
+from flask  import Response
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("api")
@@ -74,6 +77,23 @@ def get_events():
         "count": len(events),
         "events": events
     }), 200
+
+camera = cv2.VideoCapture(0) 
+
+def generate_frames():
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # WebSocket Ingestion for Video Frames (SRS FR-1.1)
 @socketio.on("connect", namespace="/ws/stream/video")
