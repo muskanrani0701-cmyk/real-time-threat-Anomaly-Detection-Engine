@@ -1,0 +1,9 @@
+kaggle>=1.6.0
+torch>=2.2.0
+torchvision>=0.17.0
+scikit-learn>=1.4.0
+numpy>=1.26.0
+Pillow>=10.2.0
+onnx>=1.15.0
+onnxruntime>=1.17.0
+facenet-pytorch>=2.6.0

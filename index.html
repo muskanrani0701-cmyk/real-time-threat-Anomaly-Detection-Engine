@@ -4,266 +4,660 @@
     <link rel="icon" type="image/x-icon" href="data:,">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AEGIS | Real-Time Threat Engine</title>
-    <!-- Tailwind CSS (Restored so all sizing and grid classes work) -->
+    <title>AEGIS | Real-Time Threat & Biometric Intrusion Engine</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f8fafc; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-        .glow-cyan { box-shadow: 0 0 15px rgba(34, 211, 238, 0.2); }
-        .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
-        .scanline {
-            width: 100%; height: 2px; background: rgba(34, 211, 238, 0.2);
-            position: absolute; top: 0; left: 0; animation: scan 4s linear infinite;
+        .glow-cyan { box-shadow: 0 0 15px rgba(34, 211, 238, 0.25); }
+        .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+
+        /* 1 & 3: Stacking Context & Aspect Ratio Preservation */
+        img#video-feed-img {
+            position: relative;
+            z-index: 0;
+            object-fit: contain; /* Prevents cropping edge data for 4:3 and varied aspect cameras */
+            width: 100%;
+            height: 100%;
         }
-        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
-        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* 2: Scanline HUD Blending & Stacking */
+        .scanline {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+            mix-blend-mode: overlay; /* Dynamically interacts with underlying video feed colors */
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0));
+            background-size: 100% 8px;
+            animation: scan 4s linear infinite;
+        }
+
+        /* 5: Fallback UI Ghosting Fix */
+        #video-feed-fallback {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+        }
+
+        /* When fallback is active (not hidden), hide the image completely */
+        #video-feed-fallback:not(.hidden) ~ img#video-feed-img,
+        #video-feed-fallback:not([style*="display: none"]) ~ img#video-feed-img {
+            display: none !important;
+        }
+
+        @keyframes scan { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .animate-pulse-red { animation: pulse-red 1s infinite; }
-        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); border: 1px solid rgba(51, 65, 85, 0.5); }
+        .glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px); border: 1px solid rgba(51, 65, 85, 0.5); }
     </style>
 </head>
 <body class="p-4 lg:p-8 min-h-screen overflow-x-hidden">
 
-    <!-- CRITICAL THREAT BANNER -->
-    <div id="threat-banner" class="hidden fixed top-0 left-0 w-full z-50 bg-red-600 text-white p-3 text-center font-bold tracking-widest animate-pulse-red border-b-2 border-red-400">
-        CRITICAL ANOMALY DETECTED: HIGH RISK SCORE IDENTIFIED
+    <!-- 4: CRITICAL INTRUDER / THREAT BANNER (ARIA Live Alert) -->
+    <div id="threat-banner" role="alert" aria-live="assertive" class="hidden fixed top-0 left-0 w-full z-50 bg-red-600 text-white p-3 text-center font-bold tracking-widest animate-pulse-red border-b-2 border-red-400 flex items-center justify-center gap-3 shadow-lg">
+        <span class="text-xl">🚨</span>
+        <span id="threat-banner-text">CRITICAL INTRUDER DETECTED: UNRECOGNIZED BIOMETRIC TARGET IN PERIMETER</span>
+        <button onclick="dismissBanner()" class="ml-4 bg-black/40 hover:bg-black/60 px-3 py-1 rounded text-xs transition-colors">DISMISS</button>
     </div>
+    <div id="intruder-alert-banner" role="alert" aria-live="assertive" class="sr-only"></div>
 
     <!-- HEADER -->
     <header class="flex flex-wrap justify-between items-center mb-8 gap-4">
         <div>
-            <h1 class="text-3xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">
-                AEGIS <span class="text-slate-500 font-light text-xl">// THREAT ENGINE v4.2</span>
-            </h1>
-            <p class="text-xs text-slate-500 mono mt-1">CONNECTED TO: http://127.0.0.1:5000/api/v1/events</p>
+            <div class="flex items-center gap-3">
+                <h1 class="text-3xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600">
+                    AEGIS <span class="text-slate-500 font-light text-xl">// BIOMETRIC & THREAT ENGINE v5.0</span>
+                </h1>
+                <!-- Dynamic Backend Status Pill -->
+                <div id="backend-status-pill" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700 text-[10px] mono">
+                    <span id="backend-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    <span id="backend-status-text" class="text-slate-300">CONNECTING...</span>
+                </div>
+            </div>
+            <p class="text-xs text-slate-500 mono mt-1">REAL-TIME MULTIMODAL INTRUSION & TELEMETRY RADAR</p>
         </div>
-        <div class="flex items-center gap-6">
+        <div class="flex items-center gap-5">
+            <button onclick="openEnrollModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all glow-cyan">
+                <span>+</span> ENROLL AUTHORIZED FACE
+            </button>
             <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-400 uppercase tracking-widest">Audio Alerts</span>
+                <span class="text-xs text-slate-400 uppercase tracking-widest text-[10px]">Audio Alarm</span>
                 <button id="audio-toggle" onclick="toggleAudio()" class="w-12 h-6 bg-slate-700 rounded-full relative transition-colors">
                     <div id="audio-knob" class="absolute left-1 top-1 w-4 h-4 bg-slate-400 rounded-full transition-all"></div>
                 </button>
             </div>
             <div class="text-right">
                 <div class="text-cyan-400 mono text-xl leading-none" id="clock">00:00:00</div>
-                <div class="text-[10px] text-slate-500 uppercase tracking-[0.2em]">System Time (UTC)</div>
+                <div class="text-[10px] text-slate-500 uppercase tracking-[0.2em] mt-1">System Time (UTC)</div>
             </div>
         </div>
     </header>
 
     <main class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <!-- LEFT: SURVEILLANCE FEED -->
+        <!-- LEFT: SURVEILLANCE FEED & TELEMETRY -->
         <div class="lg:col-span-7 space-y-6">
             <div class="glass rounded-xl overflow-hidden relative">
                 <div class="absolute top-4 left-4 z-10 flex gap-2">
-                    <span class="bg-red-600 text-[10px] px-2 py-0.5 rounded font-bold animate-pulse uppercase">Live Feed</span>
-                    <span class="bg-slate-800 text-[10px] px-2 py-0.5 rounded font-bold text-slate-300 uppercase">CAM_04_NORTH_PERIMETER</span>
+                    <span class="bg-red-600 text-[10px] px-2 py-0.5 rounded font-bold animate-pulse uppercase">Live Biometric Feed</span>
+                    <span class="bg-slate-800 text-[10px] px-2 py-0.5 rounded font-bold text-slate-300 uppercase">CAM_01_OPTICAL</span>
                 </div>
                 
-                <!-- WEBCAM CONTAINER WITH CONSTRAINED ASPECT RATIO -->
-                <div class="aspect-video bg-slate-900 relative flex items-center justify-center overflow-hidden">
-                    <img src="http://127.0.0.1:5000/video_feed" alt="Live Feed" class="absolute inset-0 w-full h-full object-cover">
-                    <div class="scanline pointer-events-none"></div>
+                <!-- WEBCAM / RADAR CONTAINER -->
+                <div class="aspect-video bg-slate-950 relative flex items-center justify-center overflow-hidden">
+                    <!-- 5: Stream Reconnecting Fallback Overlay (Preceding img for CSS sibling selector) -->
+                    <div id="video-feed-fallback" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-center p-4 z-20">
+                        <div class="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin mb-3"></div>
+                        <p class="text-xs font-bold text-cyan-400 mono">CONNECTING TO OPTICAL RADAR...</p>
+                        <p class="text-[10px] text-slate-500 mt-1">Establishing MJPEG stream on <span id="video-endpoint-label" class="mono text-slate-400">/video_feed</span></p>
+                        <button onclick="reconnectVideoStream()" class="mt-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-3 py-1.5 rounded-lg border border-slate-700 transition-colors">RETRY STREAM</button>
+                    </div>
+
+                    <!-- 1 & 3: Video element with explicit stacking context (z-index: 0) and aspect-ratio preservation (object-contain) -->
+                    <img id="video-feed-img" src="/video_feed" alt="Live Surveillance Feed" class="w-full h-full object-contain">
                     
-                    <div class="absolute border-2 border-cyan-500 w-32 h-48 top-1/4 left-1/3 opacity-70 pointer-events-none">
-                        <div class="absolute -top-6 left-0 bg-cyan-500 text-[8px] px-1 text-black font-bold">TARGET: HUMAN (0.98)</div>
-                    </div>
-                    <div id="breach-box" class="absolute border-2 border-red-500 w-40 h-24 bottom-1/4 right-1/4 opacity-0 transition-opacity duration-300 pointer-events-none">
-                        <div class="absolute -top-6 left-0 bg-red-500 text-[8px] px-1 text-white font-bold">BREACH: ZONE_B</div>
-                    </div>
+                    <!-- 1 & 2: Scanline HUD element with z-index: 10 and mix-blend-mode: overlay -->
+                    <div class="scanline pointer-events-none"></div>
                 </div>
 
                 <div class="p-4 border-t border-slate-800 flex justify-between items-center bg-slate-900/50">
                     <div class="flex gap-4">
-                        <div class="text-center"><p class="text-[10px] text-slate-500">FPS</p><p class="mono text-cyan-400">30.0</p></div>
-                        <div class="text-center"><p class="text-[10px] text-slate-500">BITRATE</p><p class="mono text-cyan-400">4.2MB/s</p></div>
+                        <div class="text-center"><p class="text-[10px] text-slate-500">PROFILES ACTIVE</p><p class="mono text-cyan-400 font-bold" id="stat-profiles-count">0</p></div>
+                        <div class="text-center"><p class="text-[10px] text-slate-500">FACENET EMBEDDING</p><p class="mono text-cyan-400 font-bold">512-D L2</p></div>
+                        <div class="text-center"><p class="text-[10px] text-slate-500">COSINE THRESHOLD</p><p class="mono text-cyan-400 font-bold">0.68</p></div>
                     </div>
                     <div class="text-right">
-                        <p class="text-[10px] text-slate-500 uppercase italic font-bold">CNN Spatial Analysis Active</p>
+                        <p class="text-[10px] text-emerald-400 uppercase italic font-bold">Biometric Radar Armed</p>
                     </div>
                 </div>
             </div>
 
-            <!-- TABLE: TELEMETRY -->
+            <!-- TABLE: TELEMETRY & BIOMETRIC EVENTS -->
             <div class="glass rounded-xl overflow-hidden">
-                <div class="p-4 border-b border-slate-800 bg-slate-800/30">
-                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Live Threat Telemetry</h3>
+                <div class="p-4 border-b border-slate-800 bg-slate-800/30 flex justify-between items-center">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Live Threat & Intrusion Log</h3>
+                    <span class="text-[10px] text-slate-500 mono flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                        THROTTLED SYNC (2s)
+                    </span>
                 </div>
-                <div class="overflow-x-auto h-[300px] overflow-y-auto">
+                <div class="overflow-x-auto h-[320px] overflow-y-auto">
                     <table class="w-full text-left mono text-xs">
                         <thead class="sticky top-0 bg-slate-900 text-slate-500 uppercase border-b border-slate-800">
                             <tr>
                                 <th class="p-4">Timestamp</th>
-                                <th class="p-4">Source ID</th>
+                                <th class="p-4">Source</th>
+                                <th class="p-4">Biometric Status</th>
                                 <th class="p-4">Risk Score</th>
                                 <th class="p-4 text-right">Severity</th>
                             </tr>
                         </thead>
                         <tbody id="event-table-body">
-                            <!-- Events injected here -->
+                            <tr>
+                                <td colspan="5" class="p-6 text-center text-slate-500 italic">Listening for incoming telemetry events...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- RIGHT: CHART & STATS -->
+        <!-- RIGHT: AUTHORIZED PERSONNEL & RISK CHART -->
         <div class="lg:col-span-5 space-y-6">
-            <div class="glass rounded-xl p-6">
-                <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-6">ANN Fusion Risk Score</h3>
-                <canvas id="riskChart" height="250"></canvas>
+            
+            <!-- AUTHORIZED PERSONNEL LIST -->
+            <div class="glass rounded-xl p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Authorized Personnel</h3>
+                    <span id="auth-badge-count" class="bg-cyan-500/20 text-cyan-400 text-xs px-2.5 py-0.5 rounded font-bold">0 Enrolled</span>
+                </div>
+                <div id="authorized-list-container" class="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                    <p class="text-xs text-slate-500 italic text-center py-6">No authorized faces enrolled. Tap '+ Enroll Authorized Face' above.</p>
+                </div>
             </div>
 
+            <!-- RISK SCORE CHART -->
+            <div class="glass rounded-xl p-5">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest">Multi-Vector Neural Risk Curve</h3>
+                    <span class="text-[10px] text-cyan-400 mono">P(Anomaly)</span>
+                </div>
+                <div class="h-[180px] w-full relative">
+                    <canvas id="riskChart"></canvas>
+                </div>
+            </div>
+
+            <!-- KEY STATS -->
             <div class="grid grid-cols-2 gap-4">
                 <div class="glass rounded-xl p-4">
-                    <p class="text-[10px] text-slate-500 uppercase">Mean Anomaly Score</p>
-                    <p class="text-2xl mono text-cyan-400" id="stat-mean">0.00</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-wider">Mean Anomaly Score</p>
+                    <p class="text-2xl mono text-cyan-400 font-bold mt-1" id="stat-mean">0.00</p>
                 </div>
                 <div class="glass rounded-xl p-4">
-                    <p class="text-[10px] text-slate-500 uppercase">Active Alerts</p>
-                    <p class="text-2xl mono text-red-500" id="stat-alerts">0</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-wider">Intruders Flagged</p>
+                    <p class="text-2xl mono text-red-500 font-bold mt-1" id="stat-alerts">0</p>
                 </div>
-            </div>
-
-            <div class="glass rounded-xl p-6 border-l-4 border-cyan-500">
-                <h4 class="text-xs font-bold text-cyan-400 uppercase mb-2">Neural Engine Status</h4>
-                <p class="text-xs text-slate-400 leading-relaxed italic">
-                    Mapping backend fields: <code class="text-cyan-300">captured_at</code> & <code class="text-cyan-300">source_id</code>.
-                </p>
             </div>
         </div>
     </main>
 
-    <script>
-        const API_URL = "http://127.0.0.1:5000/api/v1/events";
-        let riskHistory = Array(15).fill(0);
-        let audioEnabled = false;
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    <!-- ENROLL MODAL -->
+    <div id="enroll-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass rounded-2xl p-6 w-full max-w-md border border-cyan-500/40 relative shadow-2xl" onclick="event.stopPropagation()">
+            <button onclick="closeEnrollModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+            <h2 class="text-lg font-bold text-cyan-400 mb-1">Enroll Authorized Personnel</h2>
+            <p class="text-xs text-slate-400 mb-4">Upload a portrait to extract and cache its 512-D FaceNet embedding.</p>
 
-        const ctx = document.getElementById('riskChart').getContext('2d');
-        const riskChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: Array(15).fill(''),
-                datasets: [{
-                    label: 'Risk Probability',
-                    data: riskHistory,
-                    borderColor: '#22d3ee',
-                    borderWidth: 2,
-                    backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: { min: 0, max: 1, grid: { color: '#1e293b' }, ticks: { color: '#64748b' } },
-                    x: { display: false }
-                },
-                plugins: { legend: { display: false } },
-                animation: { duration: 400 }
+            <form id="enroll-form" onsubmit="submitEnroll(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Full Name</label>
+                    <input type="text" id="enroll-name" required placeholder="e.g. Dr. Alex Mercer" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:border-cyan-400 outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Role / Department</label>
+                    <input type="text" id="enroll-role" placeholder="e.g. Lead Security Architect" value="Resident / Staff" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:border-cyan-400 outline-none transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Face Portrait Photo</label>
+                    <input type="file" id="enroll-image" accept="image/*" required class="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer">
+                </div>
+                <div id="enroll-error" class="hidden text-xs text-red-400 bg-red-950/60 p-3 rounded-lg border border-red-800"></div>
+                <div class="pt-2 flex justify-end gap-3">
+                    <button type="button" onclick="closeEnrollModal()" class="px-4 py-2 text-xs text-slate-400 hover:text-white transition-colors">Cancel</button>
+                    <button type="submit" id="enroll-btn" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">Extract & Enroll Face</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- DASHBOARD LOGIC SCRIPT -->
+    <script>
+        // Dynamic API Origin Resolution: Works seamlessly when loaded from Flask (:5000),
+        // FastAPI (:8000), or Live Server / static server (:5500, :3000, file://)
+        function resolveApiBase() {
+            const port = window.location.port;
+            // If already served directly by backend, use same-origin relative paths
+            if (port === '5000' || port === '8000') {
+                return '';
             }
-        });
+            // If opened via Live Server or static runner, proxy to backend port 5000
+            const host = window.location.hostname || 'localhost';
+            return `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${host}:5000`;
+        }
+
+        const API_BASE = resolveApiBase();
+        const API_EVENTS = `${API_BASE}/api/v1/events`;
+        const API_AUTH_LIST = `${API_BASE}/api/v1/authorized/list`;
+        const API_AUTH_UPLOAD = `${API_BASE}/api/v1/authorized/upload`;
+        const API_VIDEO_FEED = `${API_BASE}/video_feed`;
+
+        let riskHistory = Array(15).fill(0.05);
+        let audioEnabled = false;
+        let audioCtx = null;
+        let riskChart = null;
+        let pollingActive = true;
+        let pollTimeoutId = null;
+
+        // Initialize Web Audio safely on first user gesture
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
 
         function toggleAudio() {
+            initAudioContext();
             audioEnabled = !audioEnabled;
             const knob = document.getElementById('audio-knob');
             const toggle = document.getElementById('audio-toggle');
             if (audioEnabled) {
                 knob.style.left = '26px';
+                knob.classList.replace('bg-slate-400', 'bg-white');
                 toggle.classList.replace('bg-slate-700', 'bg-cyan-600');
-                if (audioCtx.state === 'suspended') audioCtx.resume();
             } else {
                 knob.style.left = '4px';
+                knob.classList.replace('bg-white', 'bg-slate-400');
                 toggle.classList.replace('bg-cyan-600', 'bg-slate-700');
             }
         }
 
         function playAlertBeep() {
-            if (!audioEnabled) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.2);
+            if (!audioEnabled || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(650, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1300, audioCtx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {
+                console.warn("Audio playback issue:", e);
+            }
         }
 
-        async function fetchEvents() {
+        // Initialize Chart.js Instance for Multi-Vector Neural Risk Curve
+        function initChart() {
+            const canvas = document.getElementById('riskChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, 180);
+            gradient.addColorStop(0, 'rgba(34, 211, 238, 0.35)');
+            gradient.addColorStop(1, 'rgba(34, 211, 238, 0.0)');
+
+            riskChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(15).fill(''),
+                    datasets: [{
+                        label: 'Threat Probability',
+                        data: riskHistory,
+                        borderColor: '#22d3ee',
+                        borderWidth: 2,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#22d3ee'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 1.0,
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: {
+                                color: '#64748b',
+                                font: { family: 'JetBrains Mono', size: 10 },
+                                callback: val => `${(val * 100).toFixed(0)}%`
+                            }
+                        },
+                        x: { display: false }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `Risk Score: ${(ctx.raw * 100).toFixed(1)}%`
+                            }
+                        }
+                    },
+                    animation: { duration: 250 }
+                }
+            });
+        }
+
+        // Connection Status Indicator Pill
+        function updateConnectionStatus(isOnline, detail = "") {
+            const dot = document.getElementById('backend-status-dot');
+            const txt = document.getElementById('backend-status-text');
+            if (!dot || !txt) return;
+
+            if (isOnline) {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                txt.className = "text-emerald-400 font-bold";
+                txt.innerText = detail || "ONLINE (ACTIVE)";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+                txt.className = "text-red-400 font-bold";
+                txt.innerText = detail || "OFFLINE (RECONNECTING)";
+            }
+        }
+
+        // Live Video Stream Watchdog & Reconnection
+        function initVideoStream() {
+            const img = document.getElementById('video-feed-img');
+            const fallback = document.getElementById('video-feed-fallback');
+            const label = document.getElementById('video-endpoint-label');
+
+            if (label) label.innerText = API_VIDEO_FEED;
+            if (!img) return;
+
+            img.onload = () => {
+                if (fallback) fallback.classList.add('hidden');
+                img.style.display = 'block';
+            };
+
+            img.onerror = () => {
+                if (fallback) fallback.classList.remove('hidden');
+                img.style.display = 'none';
+            };
+
+            img.src = API_VIDEO_FEED;
+        }
+
+        function reconnectVideoStream() {
+            const img = document.getElementById('video-feed-img');
+            if (!img) return;
+            const fallback = document.getElementById('video-feed-fallback');
+            if (fallback) fallback.classList.add('hidden');
+            img.style.display = 'block';
+            // Cache bust parameter forces fresh stream handshake
+            img.src = `${API_VIDEO_FEED}?t=${Date.now()}`;
+        }
+
+        // Recursive setTimeout Pattern: Guarantees zero request stacking under server lag
+        async function updateDashboard() {
             try {
-                const response = await fetch(API_URL);
-                const data = await response.json();
-                
-                if (data && data.events && data.events.length > 0) {
-                    processEvents(data.events);
+                const [eventsRes, authRes] = await Promise.all([
+                    fetch(API_EVENTS, { cache: 'no-store' }),
+                    fetch(API_AUTH_LIST, { cache: 'no-store' })
+                ]);
+
+                let syncSucceeded = false;
+
+                if (eventsRes.ok) {
+                    const eventsPayload = await eventsRes.json();
+                    const list = eventsPayload.events || (Array.isArray(eventsPayload) ? eventsPayload : []);
+                    processEvents(list);
+                    syncSucceeded = true;
+                }
+
+                if (authRes.ok) {
+                    const authList = await authRes.json();
+                    renderAuthorizedList(authList);
+                    syncSucceeded = true;
+                }
+
+                if (syncSucceeded) {
+                    updateConnectionStatus(true, `SYNCED (${API_BASE || 'LOCAL'})`);
+                } else {
+                    updateConnectionStatus(false, "API ERROR 404");
                 }
             } catch (err) {
-                console.error("Connection Error:", err);
+                console.warn("Telemetry sync failed:", err.message);
+                updateConnectionStatus(false, "CONNECTION LOST");
+            } finally {
+                // Schedule next poll ONLY after this request cycle is completely finished
+                if (pollingActive) {
+                    pollTimeoutId = setTimeout(updateDashboard, 2000);
+                }
             }
         }
 
         function processEvents(events) {
             const tbody = document.getElementById('event-table-body');
-            const latest = events[events.length - 1];
-            
-            tbody.innerHTML = '';
-            events.slice().reverse().forEach(ev => {
-                const row = document.createElement('tr');
-                row.className = 'border-b border-slate-800/50 hover:bg-slate-800/20';
-                
-                const scoreColor = ev.risk_score >= 0.7 ? 'text-red-500' : 'text-cyan-400';
-                
+            if (!tbody) return;
+
+            if (!events || events.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500 italic">No telemetry events logged yet.</td></tr>`;
+                return;
+            }
+
+            const latest = events[0];
+            tbody.innerHTML = events.slice(0, 15).map(ev => {
+                const score = typeof ev.risk_score === 'number' ? ev.risk_score : 0.0;
+                const scoreColor = score >= 0.7 ? 'text-red-500' : 'text-cyan-400';
+
                 let sevClass = 'bg-slate-700';
                 if (ev.severity === 'CRITICAL' || ev.severity === 'HIGH') sevClass = 'bg-red-600';
                 else if (ev.severity === 'MEDIUM') sevClass = 'bg-orange-500';
-                
-                row.innerHTML = `
-                    <td class="p-4 text-slate-400">${new Date(ev.captured_at).toLocaleTimeString()}</td>
-                    <td class="p-4">${ev.source_id}</td>
-                    <td class="p-4 font-bold ${scoreColor}">${ev.risk_score.toFixed(2)}</td>
-                    <td class="p-4 text-right"><span class="${sevClass} px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase">${ev.severity}</span></td>
+
+                let faceBadge = '<span class="text-slate-500 text-[10px]">NO_FACE</span>';
+                if (ev.face_status === 'AUTHORIZED') {
+                    faceBadge = `<span class="text-emerald-400 font-bold text-[10px]">AUTH: ${ev.person_name || 'Personnel'}</span>`;
+                } else if (ev.face_status === 'INTRUDER') {
+                    faceBadge = `<span class="text-red-500 font-bold text-[10px] animate-pulse">INTRUDER ALERT</span>`;
+                }
+
+                const timeStr = ev.captured_at ? new Date(ev.captured_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+
+                return `
+                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors">
+                        <td class="p-4 text-slate-400">${timeStr}</td>
+                        <td class="p-4 text-slate-200">${ev.source_id || 'CAM_01'}</td>
+                        <td class="p-4">${faceBadge}</td>
+                        <td class="p-4 font-bold ${scoreColor}">${score.toFixed(2)}</td>
+                        <td class="p-4 text-right"><span class="${sevClass} px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase">${ev.severity || 'INFO'}</span></td>
+                    </tr>
                 `;
-                tbody.appendChild(row);
-            });
+            }).join('');
 
-            riskHistory.push(latest.risk_score);
-            riskHistory.shift();
-            riskChart.update();
+            // Push newest telemetry point to Risk Curve
+            if (riskChart && latest) {
+                riskHistory.push(latest.risk_score || 0.0);
+                riskHistory.shift();
+                riskChart.update();
+            }
 
-            const avg = events.reduce((acc, curr) => acc + curr.risk_score, 0) / events.length;
+            // Update aggregated telemetry cards
+            const avg = events.reduce((acc, curr) => acc + (curr.risk_score || 0), 0) / events.length;
             document.getElementById('stat-mean').innerText = avg.toFixed(3);
-            const highAlerts = events.filter(e => e.risk_score >= 0.7 || e.severity === 'CRITICAL' || e.severity === 'HIGH').length;
+            const highAlerts = events.filter(e => e.face_status === 'INTRUDER' || (e.risk_score && e.risk_score >= 0.75)).length;
             document.getElementById('stat-alerts').innerText = highAlerts;
 
+            // Trigger alarm HUD banner if intruder or high anomaly detected
             const banner = document.getElementById('threat-banner');
-            const breachBox = document.getElementById('breach-box');
-            
-            if (latest.risk_score >= 0.70 || latest.severity === 'CRITICAL' || latest.severity === 'HIGH') {
-                banner.classList.remove('hidden');
-                breachBox.style.opacity = '1';
+            const intruderAlert = document.getElementById('intruder-alert-banner');
+            if (latest && (latest.face_status === 'INTRUDER' || latest.risk_score >= 0.90)) {
+                if (banner) banner.classList.remove('hidden');
+                if (intruderAlert) {
+                    intruderAlert.innerText = `Critical Intruder Alert: Detected unrecognized target with risk score ${(latest.risk_score * 100).toFixed(0)}%`;
+                }
                 playAlertBeep();
-            } else {
-                banner.classList.add('hidden');
-                breachBox.style.opacity = '0';
             }
         }
 
+        function dismissBanner() {
+            const banner = document.getElementById('threat-banner');
+            const intruderAlert = document.getElementById('intruder-alert-banner');
+            if (banner) banner.classList.add('hidden');
+            if (intruderAlert) intruderAlert.innerText = '';
+        }
+
+        // Render Authorized Personnel List
+        function renderAuthorizedList(list) {
+            const container = document.getElementById('authorized-list-container');
+            const badge = document.getElementById('auth-badge-count');
+            const statProfiles = document.getElementById('stat-profiles-count');
+
+            const count = Array.isArray(list) ? list.length : 0;
+            if (badge) badge.innerText = `${count} Enrolled`;
+            if (statProfiles) statProfiles.innerText = count;
+
+            if (!container) return;
+
+            if (!list || list.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-500 italic text-center py-6">No authorized faces enrolled. Tap '+ Enroll Authorized Face' above.</p>`;
+                return;
+            }
+
+            container.innerHTML = list.map(p => {
+                const imgUrl = p.image_url ? (p.image_url.startsWith('http') ? p.image_url : `${API_BASE}${p.image_url}`) : '';
+                return `
+                    <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/70 border border-slate-800 hover:border-slate-700 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <img src="${imgUrl}" class="w-10 h-10 rounded-full object-cover border border-cyan-500/50" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%2338bdf8%22><circle cx=%2212%22 cy=%228%22 r=%224%22/><path d=%22M4 20c0-4 4-6 8-6s8 2 8 6%22/></svg>'">
+                            <div>
+                                <p class="text-xs font-bold text-white">${p.full_name}</p>
+                                <p class="text-[10px] text-slate-400">${p.role_title || 'Authorized Staff'}</p>
+                            </div>
+                        </div>
+                        <button onclick="deleteAuthorized(${p.id})" class="text-slate-500 hover:text-red-400 text-xs px-2.5 py-1 rounded transition-colors">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function deleteAuthorized(id) {
+            if (!confirm("Remove this personnel from the authorized biometric cache?")) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/v1/authorized/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    // Immediate refresh
+                    clearTimeout(pollTimeoutId);
+                    updateDashboard();
+                } else {
+                    alert("Unable to delete record.");
+                }
+            } catch (e) {
+                alert("Failed to communicate with server.");
+            }
+        }
+
+        // Modal Controls & Form Handling
+        function openEnrollModal() {
+            const modal = document.getElementById('enroll-modal');
+            const errDiv = document.getElementById('enroll-error');
+            if (errDiv) errDiv.classList.add('hidden');
+            if (modal) {
+                modal.classList.remove('hidden');
+                setTimeout(() => document.getElementById('enroll-name')?.focus(), 50);
+            }
+        }
+
+        function closeEnrollModal() {
+            const modal = document.getElementById('enroll-modal');
+            const errDiv = document.getElementById('enroll-error');
+            const form = document.getElementById('enroll-form');
+            if (modal) modal.classList.add('hidden');
+            if (errDiv) errDiv.classList.add('hidden');
+            if (form) form.reset();
+        }
+
+        // Dismiss modal when clicking backdrop or pressing Escape
+        document.getElementById('enroll-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'enroll-modal') closeEnrollModal();
+        });
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeEnrollModal();
+        });
+
+        // Multipart Form Enrollment Submission
+        async function submitEnroll(e) {
+            e.preventDefault();
+            const btn = document.getElementById('enroll-btn');
+            const errDiv = document.getElementById('enroll-error');
+            const fileInput = document.getElementById('enroll-image');
+
+            if (!fileInput || !fileInput.files[0]) {
+                errDiv.innerText = "Please select a portrait image to enroll.";
+                errDiv.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Extracting 512-D Embedding...";
+            errDiv.classList.add('hidden');
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('full_name', document.getElementById('enroll-name').value.trim());
+            formData.append('role_title', document.getElementById('enroll-role').value.trim());
+            // Append both 'image' and 'file' field keys to support both backend routers
+            formData.append('image', file);
+            formData.append('file', file);
+
+            try {
+                const res = await fetch(API_AUTH_UPLOAD, { method: 'POST', body: formData });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    closeEnrollModal();
+                    // Immediate sync to update personnel badge & card list
+                    clearTimeout(pollTimeoutId);
+                    updateDashboard();
+                } else {
+                    errDiv.innerText = data.error || data.detail || "Enrollment rejected. Please verify the portrait face.";
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (err) {
+                errDiv.innerText = "Connection failed. Please ensure the backend is running on 0.0.0.0.";
+                errDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Extract & Enroll Face";
+            }
+        }
+
+        // Clock display
         setInterval(() => {
-            document.getElementById('clock').innerText = new Date().toISOString().slice(11, 19);
+            const clock = document.getElementById('clock');
+            if (clock) clock.innerText = new Date().toISOString().slice(11, 19);
         }, 1000);
 
-        fetchEvents();
-        setInterval(fetchEvents, 2000);
+        // Document Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            initVideoStream();
+            updateDashboard(); // Kick off recursive polling
+        });
     </script>
 </body>
 </html>

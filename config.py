@@ -26,6 +26,17 @@ ARTIFACTS_DIR = BASE_DIR / "ml_engine" / "artifacts"
 CNN_MODEL_PATH = str(ARTIFACTS_DIR / "spatial_cnn.h5")
 KNN_MODEL_PATH = str(ARTIFACTS_DIR / "network_knn.pkl")
 ANN_MODEL_PATH = str(ARTIFACTS_DIR / "fusion_ann.h5")
+FACENET_MODEL_PATH = str(ARTIFACTS_DIR / "facenet_512_base.keras")
+
+# Facial Recognition & Storage Settings
+FACE_SIMILARITY_THRESHOLD = float(os.getenv("FACE_SIMILARITY_THRESHOLD", 0.68))
+STORAGE_DIR = BASE_DIR / "storage"
+AUTHORIZED_FACES_DIR = STORAGE_DIR / "authorized_faces"
+INTRUDER_SNAPSHOTS_DIR = STORAGE_DIR / "intruder_snapshots"
+
+# Ensure storage directories exist
+AUTHORIZED_FACES_DIR.mkdir(parents=True, exist_ok=True)
+INTRUDER_SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Inference & Correlation Settings (per SRS FR-2.4, FR-3.2, NFR-1)
 TEMPORAL_WINDOW_SECONDS = float(os.getenv("TEMPORAL_WINDOW_SECONDS", 2.0))

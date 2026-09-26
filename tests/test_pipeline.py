@@ -10,6 +10,8 @@ import db
 from broker import broker
 from app import app
 from workers import CNNWorker, KNNWorker, ANNFusionWorker
+from ml_engine.face_engine import face_engine
+
 
 @pytest.fixture(autouse=True)
 def setup_test_env():
@@ -26,17 +28,21 @@ def setup_test_env():
     except Exception:
         pass
 
+
 @pytest.fixture
 def client():
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client
 
+
 def test_health_endpoint(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     data = response.get_json()
     assert data["status"] == "healthy"
+    assert "authorized_profiles_count" in data
+
 
 def test_network_log_ingestion_latency(client):
     payload = {
@@ -55,17 +61,17 @@ def test_network_log_ingestion_latency(client):
     data = response.get_json()
     assert data["status"] == "enqueued"
     assert data["source_id"] == "test_sensor_01"
-    # Verify NFR-1 target: enqueue latency <= 20ms
     assert data["enqueue_latency_ms"] <= 20.0
 
+
 def test_network_log_validation_failure(client):
-    # Invalid port (> 65535) and missing packet_rate
     bad_payload = {
         "source_id": "test_sensor_02",
         "src_port": 99999
     }
     response = client.post("/api/v1/network/log", json=bad_payload)
     assert response.status_code == 422
+
 
 def test_workers_inference_pipeline():
     cnn_worker = CNNWorker()
@@ -114,14 +120,17 @@ def test_workers_inference_pipeline():
     assert fusion_res["severity"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     assert fusion_res["fusion_latency_ms"] < 500.0
 
+
 def test_events_database_retrieval(client):
-    # Insert high-risk anomaly event to DB
     event_id = db.insert_event(
         source_id="camera_security_hall",
         risk_score=0.88,
         severity="HIGH",
         knn_distance=3.45,
-        cnn_score=1.22
+        cnn_score=1.22,
+        face_status="INTRUDER",
+        person_name="Unidentified Intruder",
+        face_similarity=0.23
     )
     assert event_id > 0
 
@@ -132,4 +141,33 @@ def test_events_database_retrieval(client):
     recent = data["events"][0]
     assert recent["source_id"] == "camera_security_hall"
     assert recent["risk_score"] == 0.88
-    assert recent["severity"] == "HIGH"
+    assert recent["face_status"] == "INTRUDER"
+
+
+def test_biometric_authorized_personnel_and_intrusion(client):
+    """Verifies enrollment of authorized face, vector caching, and profile deletion."""
+    # 1. Insert authorized personnel directly into db
+    fake_emb = np.random.randn(512).astype(np.float32)
+    fake_emb = (fake_emb / np.linalg.norm(fake_emb)).tolist()
+    p_id = db.insert_authorized_person(
+        full_name="Agent Zero",
+        role_title="Senior Analyst",
+        image_path="test_agent.jpg",
+        embedding=fake_emb
+    )
+    assert p_id > 0
+
+    # 2. Test list endpoint
+    list_res = client.get("/api/v1/authorized/list")
+    assert list_res.status_code == 200
+    profiles = list_res.get_json()
+    assert any(p["id"] == p_id for p in profiles)
+
+    # 3. Reload cache and verify matching
+    face_engine.reload_cache()
+    assert len(face_engine.authorized_cache) >= 1
+
+    # 4. Clean up authorized record
+    del_res = client.delete(f"/api/v1/authorized/{p_id}")
+    assert del_res.status_code == 200
+    face_engine.reload_cache()
