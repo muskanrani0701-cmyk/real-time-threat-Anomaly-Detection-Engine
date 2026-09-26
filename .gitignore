@@ -65,5 +65,12 @@ htmlcov/
 Thumbs.db
 desktop.ini
 
-# Keep model artifacts directory tracked
-!ml_engine/artifacts/
+# Model Weights & Checkpoints (>50MB GitHub limit protection)
+checkpoints/
+**/checkpoints/
+*.keras
+!*.keras.part*
+!ml_engine/artifacts/*.part*
+!ml_engine/artifacts/spatial_cnn.h5
+!ml_engine/artifacts/network_knn.pkl
+!ml_engine/artifacts/fusion_ann.h5

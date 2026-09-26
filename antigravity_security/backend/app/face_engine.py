@@ -52,10 +52,12 @@ class FaceEngine:
         try:
             import tensorflow as tf
             from tensorflow import keras
-            if KERAS_CKPT.exists():
-                self.tf_model = keras.models.load_model(str(KERAS_CKPT), compile=False)
+            from ml_engine.model_utils import ensure_model_weights
+            ckpt_path = ensure_model_weights(KERAS_CKPT)
+            if ckpt_path.exists():
+                self.tf_model = keras.models.load_model(str(ckpt_path), compile=False)
                 self.backend_framework = "tensorflow"
-                logger.info(f"Loaded TensorFlow/Keras 512-D FaceNet model from {KERAS_CKPT}")
+                logger.info(f"Loaded TensorFlow/Keras 512-D FaceNet model from {ckpt_path}")
                 return
             else:
                 from ml_pipeline.model_tf import build_facenet_backbone

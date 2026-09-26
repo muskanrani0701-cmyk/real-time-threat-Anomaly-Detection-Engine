@@ -44,17 +44,19 @@ class FaceEngine:
 
     def _load_model(self):
         """Loads trained 512-D Keras or PyTorch model from ml_engine/artifacts/."""
-        if os.path.exists(config.FACENET_MODEL_PATH):
+        from ml_engine.model_utils import ensure_model_weights
+        model_path = ensure_model_weights(Path(config.FACENET_MODEL_PATH))
+        if os.path.exists(str(model_path)):
             try:
                 import keras
-                self.model = keras.models.load_model(config.FACENET_MODEL_PATH, compile=False)
+                self.model = keras.models.load_model(str(model_path), compile=False)
                 # Warmup inference
                 dummy = np.zeros((1, 160, 160, 3), dtype=np.float32)
                 _ = self.model(dummy, training=False)
-                logger.info(f"Loaded 512-D FaceNet model from {config.FACENET_MODEL_PATH}")
+                logger.info(f"Loaded 512-D FaceNet model from {model_path}")
                 return
             except Exception as e:
-                logger.warning(f"Could not load Keras model from {config.FACENET_MODEL_PATH}: {e}")
+                logger.warning(f"Could not load Keras model from {model_path}: {e}")
 
         logger.info("Operating in lightweight normalized biometric feature mode.")
 
