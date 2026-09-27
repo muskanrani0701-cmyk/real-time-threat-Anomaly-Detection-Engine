@@ -30,9 +30,18 @@ class FaceEngine:
 
         # 1. Initialize Face Detection Cascade
         cascade_path = str(config.BASE_DIR / "haarcascade_frontalface_default.xml")
-        if not os.path.exists(cascade_path):
+        if not os.path.exists(cascade_path) and hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
             cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+
+        if hasattr(cv2, "CascadeClassifier"):
+            try:
+                self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            except Exception as e:
+                logger.warning(f"Failed to initialize CascadeClassifier from {cascade_path}: {e}")
+                self.face_cascade = None
+        else:
+            logger.warning("cv2.CascadeClassifier not available. Ensure 'opencv-python-headless' is installed.")
+            self.face_cascade = None
 
         # 2. Load 512-D FaceNet Deep Model
         self.model = None
@@ -78,6 +87,8 @@ class FaceEngine:
 
     def detect_face_bbox(self, frame_bgr: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
         """Detects the most prominent human face in a video frame."""
+        if self.face_cascade is None:
+            return None
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         
         # Pass 1: Standard detection on raw grayscale

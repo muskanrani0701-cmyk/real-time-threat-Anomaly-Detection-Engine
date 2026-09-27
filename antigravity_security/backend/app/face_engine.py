@@ -40,8 +40,17 @@ class FaceEngine:
         self._init_deep_model()
 
         # 2. Initialize Fast Haar Cascade Face Detector for real-time video frames
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        cascade_path = ""
+        if hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        if hasattr(cv2, "CascadeClassifier") and cascade_path:
+            try:
+                self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            except Exception as e:
+                logger.warning(f"Could not load CascadeClassifier: {e}")
+                self.face_cascade = None
+        else:
+            self.face_cascade = None
 
         # In-memory vector cache: user_id -> List of (person_id, person_name, np.ndarray 512)
         self.embedding_cache: Dict[int, List[Tuple[int, str, np.ndarray]]] = {}
@@ -119,6 +128,8 @@ class FaceEngine:
         Detects primary human face in a video frame.
         Returns bounding box (x, y, w, h) or None.
         """
+        if self.face_cascade is None:
+            return None
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
         faces = self.face_cascade.detectMultiScale(

@@ -19,7 +19,7 @@ pydantic>=2.10.0
 python-dotenv>=1.0.0
 
 # Lightweight Biometric Processing & Linear Algebra
-# (Uses OpenCV Haar Cascades & Normalized Vector Cosine Similarity)
+# (Replaced 'opencv-python' with 'opencv-python-headless' to provide required server binaries without GUI/X11 bloat)
 numpy>=1.26.0
 opencv-python-headless>=4.10.0
 
