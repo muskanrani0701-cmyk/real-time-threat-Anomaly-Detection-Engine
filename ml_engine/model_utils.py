@@ -27,13 +27,29 @@ def ensure_model_weights(target_path: Path) -> Path:
     if part1.exists() and part2.exists():
         logger.info(f"Recombining sub-50MB model chunks into {target.name}...")
         temp_target = target.with_name(target.name + ".tmp")
-        with open(temp_target, "wb") as out_f:
-            for p in [part1, part2]:
-                with open(p, "rb") as in_f:
-                    shutil.copyfileobj(in_f, out_f)
-        temp_target.replace(target)
-        logger.info(f"Reconstructed {target.name} ({target.stat().st_size / (1024*1024):.2f} MB) successfully.")
-        return target
+        try:
+            with open(temp_target, "wb") as out_f:
+                for p in [part1, part2]:
+                    with open(p, "rb") as in_f:
+                        shutil.copyfileobj(in_f, out_f)
+            temp_target.replace(target)
+            logger.info(f"Reconstructed {target.name} ({target.stat().st_size / (1024*1024):.2f} MB) successfully.")
+            return target
+        except (OSError, PermissionError) as err:
+            logger.warning(f"Could not reconstruct model in-place due to read-only filesystem ({err}).")
+            try:
+                tmp_dir = Path("/tmp/artifacts")
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                tmp_target = tmp_dir / target.name
+                if not tmp_target.exists():
+                    with open(tmp_target, "wb") as out_f:
+                        for p in [part1, part2]:
+                            with open(p, "rb") as in_f:
+                                shutil.copyfileobj(in_f, out_f)
+                return tmp_target
+            except Exception as e2:
+                logger.warning(f"Failed fallback reconstruction in /tmp: {e2}")
+                return target
 
     # Check canonical fallback in ml_engine/artifacts/
     artifacts_dir = Path(__file__).resolve().parent / "artifacts"

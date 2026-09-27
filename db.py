@@ -7,6 +7,11 @@ import config
 
 def init_db(db_path: str = config.DATABASE_PATH):
     """Initializes the database schema matching SRS Section 3.2 and Biometric extensions."""
+    try:
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 

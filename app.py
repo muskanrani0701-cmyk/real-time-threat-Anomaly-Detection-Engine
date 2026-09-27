@@ -225,12 +225,22 @@ def delete_authorized_person(person_id):
 
 @app.route("/storage/authorized_faces/<filename>")
 def serve_authorized_face(filename):
-    return send_from_directory(str(config.AUTHORIZED_FACES_DIR), filename)
+    if (config.AUTHORIZED_FACES_DIR / filename).exists():
+        return send_from_directory(str(config.AUTHORIZED_FACES_DIR), filename)
+    bundled_dir = config.BASE_DIR / "storage" / "authorized_faces"
+    if (bundled_dir / filename).exists():
+        return send_from_directory(str(bundled_dir), filename)
+    return jsonify({"error": "File not found"}), 404
 
 
 @app.route("/storage/intruder_snapshots/<filename>")
 def serve_intruder_snapshot(filename):
-    return send_from_directory(str(config.INTRUDER_SNAPSHOTS_DIR), filename)
+    if (config.INTRUDER_SNAPSHOTS_DIR / filename).exists():
+        return send_from_directory(str(config.INTRUDER_SNAPSHOTS_DIR), filename)
+    bundled_dir = config.BASE_DIR / "storage" / "intruder_snapshots"
+    if (bundled_dir / filename).exists():
+        return send_from_directory(str(bundled_dir), filename)
+    return jsonify({"error": "File not found"}), 404
 
 
 # ============================================================================
