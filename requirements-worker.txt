@@ -1,0 +1,23 @@
+# ==============================================================================
+# AEGIS Biometric & Threat Anomaly Detection Engine
+# Offline Worker, Model Generation & Full ML Training Requirements
+# (Use for local execution, Docker containers, or dedicated cloud GPU/CPU workers)
+# ==============================================================================
+
+-r requirements.txt
+
+# Machine Learning & Deep Learning Frameworks
+scikit-learn>=1.5.0
+joblib>=1.4.0
+tensorflow>=2.18.0
+keras>=3.8.0
+h5py>=3.12.0
+Pillow>=10.4.0
+
+# Optional Serverless Inference Accelerator
+onnxruntime>=1.17.0
+
+# Testing & Development Tools
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+websocket-client>=1.8.0

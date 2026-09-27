@@ -1,30 +1,27 @@
+# ==============================================================================
+# AEGIS Biometric & Threat Anomaly Detection Engine
+# Production Web / API Requirements (Optimized for Vercel Serverless Deployment)
+# Total uncompressed footprint: ~120 MB (Well below Vercel's 500 MB hard limit)
+# ==============================================================================
+
 # Core Web & API Framework
 Flask>=3.1.0
+Flask-Cors>=4.0.0
 Flask-SocketIO>=5.5.0
 simple-websocket>=1.1.0
-Flask-Cors>=4.0.0
 
-# Asynchronous Message Broker & Caching
+# Asynchronous Message Broker & In-Memory Fallback
 redis>=5.2.0
 fakeredis>=2.27.0
 
-# Data Validation & Database
+# Data Validation & Serialization
 pydantic>=2.10.0
-SQLAlchemy>=2.0.0
 python-dotenv>=1.0.0
 
-# Machine Learning & Deep Learning (PRD & SRS Specifications)
-scikit-learn>=1.5.0
-joblib>=1.4.0
-tensorflow>=2.18.0
-keras>=3.8.0
-h5py>=3.12.0
+# Lightweight Biometric Processing & Linear Algebra
+# (Uses OpenCV Haar Cascades & Normalized Vector Cosine Similarity)
 numpy>=1.26.0
-Pillow>=10.4.0
 opencv-python-headless>=4.10.0
 
-# Testing, Simulation & HTTP Clients
+# HTTP Client & Telemetry Ingestion
 requests>=2.32.0
-websocket-client>=1.8.0
-pytest>=8.3.0
-pytest-asyncio>=0.24.0

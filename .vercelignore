@@ -1,0 +1,34 @@
+# Vercel Deployment Exclusions
+# Excludes local artifacts, heavy weights, and client builds from the serverless bundle
+
+.git/
+.github/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# Mobile app directory (deployed separately to mobile stores)
+antigravity_security/mobile/
+
+# Tests & temporary simulation logs
+tests/
+test_face.jpg
+simulate_traffic.py
+live_camera_worker.py
+generate_models.py
+
+# Offline background workers & ML training scripts
+workers.py
+antigravity_security/ml_pipeline/
+
+# Heavy local model weights (prevent inflating serverless lambda bundle)
+ml_engine/artifacts/*.keras*
+ml_engine/artifacts/*.h5
+ml_engine/artifacts/*.part*
+checkpoints/
+
+# Local media storage
+storage/intruder_snapshots/*
+storage/authorized_faces/*
+events.db
